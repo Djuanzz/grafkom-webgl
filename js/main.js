@@ -4,6 +4,7 @@ function main() {
   const canvas = document.getElementById("myCanvas");
   const gl = canvas.getContext("webgl");
   const obj_path = "../data/airpodspro2.obj";
+  const mtl_path = "../data/airpodspro2.mtl";
 
   if (!gl) {
     console.error("WebGL tidak didukung!");
@@ -30,17 +31,19 @@ function main() {
   gl.compileShader(vertexShader);
 
   const fragmentShaderCode = `
-      precision mediump float;
-      varying vec3 vNormal;
-      varying vec3 vPosition;
+    precision mediump float;
+    varying vec3 vNormal;
+    varying vec3 vPosition;
+    uniform vec3 uDiffuseColor; // Tambahkan uniform untuk warna difus
 
-      void main() {
-          vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0));
-          vec3 normal = normalize(vNormal);
-          float lightIntensity = max(dot(normal, lightDir), 0.0);
-          vec3 color = vec3(0.8, 0.8, 0.8) * lightIntensity;
-          gl_FragColor = vec4(color, 1.0);
-      }
+    void main() {
+        vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0));
+        vec3 normal = normalize(vNormal);
+        float lightIntensity = max(dot(normal, lightDir), 0.0);
+        vec3 color = uDiffuseColor * lightIntensity; // Gunakan warna difus dari uniform
+        gl_FragColor = vec4(color, 1.0);
+    }
+
   `;
   const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
   gl.shaderSource(fragmentShader, fragmentShaderCode);
@@ -80,59 +83,72 @@ function main() {
   let vertexBuffer, normalBuffer, indexBuffer;
 
   // Memuat dan Parsing File .obj
-  helper.loadOBJ(obj_path, (vertices, indices, normals) => {
-    // Buffer Vertex
-    vertexBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+  // helper.loadOBJ(obj_path, (vertices, indices, normals) => {
+  helper.loadOBJWithMTL(
+    obj_path,
+    mtl_path,
+    (vertices, indices, normals, textureCoords, materials) => {
+      const diffuseColor = materials["Material.001"].diffuse || [0.8, 0.8, 0.8];
+      const uDiffuseColor = gl.getUniformLocation(program, "uDiffuseColor");
+      gl.uniform3fv(uDiffuseColor, new Float32Array(diffuseColor));
 
-    const aPos = gl.getAttribLocation(program, "aPosition");
-    gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(aPos);
+      // Buffer Vertex
+      vertexBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array(vertices),
+        gl.STATIC_DRAW
+      );
 
-    // Buffer Normal
-    normalBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
+      const aPos = gl.getAttribLocation(program, "aPosition");
+      gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(aPos);
 
-    const aNormal = gl.getAttribLocation(program, "aNormal");
-    gl.vertexAttribPointer(aNormal, 3, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(aNormal);
+      // Buffer Normal
+      normalBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
 
-    // Buffer Indeks
-    indexBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-    gl.bufferData(
-      gl.ELEMENT_ARRAY_BUFFER,
-      new Uint16Array(indices),
-      gl.STATIC_DRAW
-    );
+      const aNormal = gl.getAttribLocation(program, "aNormal");
+      gl.vertexAttribPointer(aNormal, 3, gl.FLOAT, false, 0, 0);
+      gl.enableVertexAttribArray(aNormal);
 
-    // Fungsi Render
-    function render(time) {
-      gl.enable(gl.DEPTH_TEST);
-      gl.depthFunc(gl.LEQUAL);
-
-      gl.clearColor(1.0, 1.0, 1.0, 1.0);
-      gl.clearDepth(1.0);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-      if (!freeze) {
-        angle += 0.005; // Menambah sudut rotasi setiap frame
-        glMatrix.mat4.identity(modMatrix); // Reset matriks model
-        glMatrix.mat4.rotateY(modMatrix, modMatrix, angle); // Rotasi pada sumbu Y
-      }
-
-      gl.uniformMatrix4fv(Pmatrix, false, projMatrix);
-      gl.uniformMatrix4fv(Vmatrix, false, viewMatrix);
-      gl.uniformMatrix4fv(Mmatrix, false, modMatrix);
-
+      // Buffer Indeks
+      indexBuffer = gl.createBuffer();
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-      gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
-      window.requestAnimationFrame(render);
+      gl.bufferData(
+        gl.ELEMENT_ARRAY_BUFFER,
+        new Uint16Array(indices),
+        gl.STATIC_DRAW
+      );
+
+      // Fungsi Render
+      function render(time) {
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+
+        gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        gl.clearDepth(1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        if (!freeze) {
+          angle += 0.005; // Menambah sudut rotasi setiap frame
+          glMatrix.mat4.identity(modMatrix); // Reset matriks model
+          glMatrix.mat4.rotateY(modMatrix, modMatrix, angle); // Rotasi pada sumbu Y
+        }
+
+        gl.uniformMatrix4fv(Pmatrix, false, projMatrix);
+        gl.uniformMatrix4fv(Vmatrix, false, viewMatrix);
+        gl.uniformMatrix4fv(Mmatrix, false, modMatrix);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+        window.requestAnimationFrame(render);
+      }
+      render(1);
     }
-    render(1);
-  });
+  );
 }
 
 main();
